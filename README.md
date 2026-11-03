@@ -20,7 +20,8 @@ Not affiliated with Rippling. It has **not** been run against a live Rippling co
 Beyond the documentation, from the author's own practice:
 
 - **Sync without needless writes.** Workers are upserted in set-based batches that skip rows whose content has not changed; a second identical sync writes nothing.
-- **Reconcile only on a complete listing.** After a listing that reached `next_link: null`, workers absent from it are marked removed in one anti-join statement. A listing that fails part way removes nobody, and an empty complete listing is refused rather than read as "everyone left".
+- **Reconcile only on a complete listing.** After a listing that reached `next_link: null`, workers absent from it are marked removed in one anti-join statement. A listing that fails part way removes nobody, an empty complete listing is refused rather than read as "everyone left", and two syncs of one company never overlap.
+- **Store tokens only for a completed install.** Tokens are saved after `mark_app_installed` succeeds, in the same transaction as the install record.
 - **No token leaks.** A `next_link` that points off `rest.ripplingapis.com` is refused, so the bearer token never goes to another host; a return URL off `app.rippling.com` is not followed.
 - **Tokens encrypted at rest** (Fernet), one pair per company, refreshed under a row lock.
 

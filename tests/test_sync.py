@@ -9,7 +9,7 @@ import pytest
 from fake_rippling import FakeRippling
 
 from rippling_sync.client import RetryPolicy, RipplingAPIError, RipplingClient
-from rippling_sync.sync import EmptyListingRefused, sync_workers
+from rippling_sync.sync import EmptyListingRefused, SyncAlreadyRunning, sync_workers
 
 pytestmark = pytest.mark.db
 
@@ -123,3 +123,29 @@ def test_companies_are_isolated(conn: psycopg.Connection[Any]) -> None:
         "SELECT count(*) FROM workers WHERE company_id = 'co_1' AND removed_at IS NULL"
     ).fetchone()
     assert n == (2,)
+
+
+def test_a_worker_repeated_within_one_listing_is_written_once(
+    conn: psycopg.Connection[Any],
+) -> None:
+    rows = people(3)
+    fake = FakeRippling(workers=[*rows, {**rows[1], "status": "TERMINATED"}])
+    r = sync_workers(conn, client(fake), "co_1")
+    assert (r.seen, r.inserted) == (3, 3)
+    assert stored(conn)["w1"] == ("TERMINATED", False)  # the later copy wins
+
+
+def test_a_second_sync_of_the_same_company_waits_its_turn(
+    conn: psycopg.Connection[Any], schema_url: str
+) -> None:
+    holder = psycopg.connect(schema_url, autocommit=True)
+    try:
+        holder.execute("SELECT pg_advisory_lock(hashtext('rippling-worker-sync:co_1'))")
+        with pytest.raises(SyncAlreadyRunning):
+            sync_workers(conn, client(FakeRippling(workers=people(1))), "co_1")
+        assert conn.execute("SELECT count(*) FROM sync_runs").fetchone() == (0,)
+    finally:
+        holder.close()
+    assert sync_workers(conn, client(FakeRippling(workers=people(1))), "co_1").outcome == (
+        "succeeded"
+    )

@@ -19,6 +19,7 @@ from psycopg.types.json import Jsonb
 from rippling_sync.client import RipplingClient
 
 BATCH = 500
+LOCK_PREFIX = "rippling-worker-sync:"
 
 _UPSERT = """
 INSERT INTO workers AS w (company_id, worker_id, payload, content_hash, first_seen_run,
@@ -44,6 +45,10 @@ class EmptyListingRefused(Exception):
     """A complete listing returned no workers; reconciling it would remove everyone."""
 
 
+class SyncAlreadyRunning(Exception):
+    """Another sync of the same company holds its lock."""
+
+
 @dataclass(frozen=True)
 class RunResult:
     run_id: int
@@ -63,40 +68,60 @@ def content_hash(payload: dict[str, Any]) -> str:
 def sync_workers(
     conn: psycopg.Connection[Any], client: RipplingClient, company_id: str
 ) -> RunResult:
+    """One sync of one company. Runs for the same company never overlap: an overlapping run
+    could reconcile with a listing that predates a worker the other run just inserted."""
+    lock_key = f"{LOCK_PREFIX}{company_id}"
+    with conn.transaction():
+        acquired = conn.execute("SELECT pg_try_advisory_lock(hashtext(%s))", (lock_key,)).fetchone()
+    if not acquired or not acquired[0]:
+        raise SyncAlreadyRunning(f"company {company_id}: another sync holds the lock")
+    try:
+        return _sync_locked(conn, client, company_id)
+    finally:
+        with conn.transaction():
+            conn.execute("SELECT pg_advisory_unlock(hashtext(%s))", (lock_key,))
+
+
+def _sync_locked(
+    conn: psycopg.Connection[Any], client: RipplingClient, company_id: str
+) -> RunResult:
     with conn.transaction():
         row = conn.execute(
             "INSERT INTO sync_runs (company_id) VALUES (%s) RETURNING run_id", (company_id,)
         ).fetchone()
     assert row is not None
     run_id: int = row[0]
-    seen: list[str] = []
+    # A listing can return the same worker twice (for example when rows move while the cursor
+    # pages). One statement cannot update a row twice, so each batch keeps the latest copy.
+    seen: dict[str, None] = {}
     counts = {"inserted": 0, "updated": 0, "unchanged": 0}
-    batch: list[dict[str, Any]] = []
+    batch: dict[str, dict[str, Any]] = {}
 
     def flush() -> None:
         if not batch:
             return
+        workers = list(batch.values())
         with conn.transaction():
             rows = conn.execute(
                 _UPSERT,
                 {
                     "company": company_id,
                     "run": run_id,
-                    "ids": [str(w["id"]) for w in batch],
-                    "payloads": [Jsonb(w) for w in batch],
-                    "hashes": [content_hash(w) for w in batch],
+                    "ids": list(batch),
+                    "payloads": [Jsonb(w) for w in workers],
+                    "hashes": [content_hash(w) for w in workers],
                 },
             ).fetchall()
-        written = len(rows)
         counts["inserted"] += sum(1 for (inserted,) in rows if inserted)
         counts["updated"] += sum(1 for (inserted,) in rows if not inserted)
-        counts["unchanged"] += len(batch) - written
+        counts["unchanged"] += len(workers) - len(rows)
         batch.clear()
 
     try:
         for worker in client.paginate("/workers", limit=100):
-            seen.append(str(worker["id"]))
-            batch.append(worker)
+            worker_id = str(worker["id"])
+            seen[worker_id] = None
+            batch[worker_id] = worker
             if len(batch) >= BATCH:
                 flush()
         flush()
@@ -109,7 +134,7 @@ def sync_workers(
         raise EmptyListingRefused(f"company {company_id}: complete listing returned no workers")
 
     with conn.transaction():
-        removed = conn.execute(_RECONCILE, {"company": company_id, "seen": seen}).rowcount
+        removed = conn.execute(_RECONCILE, {"company": company_id, "seen": list(seen)}).rowcount
     _finish(conn, run_id, "succeeded", len(seen), counts, removed, None)
     return RunResult(
         run_id,

@@ -37,6 +37,8 @@ class FakeRippling:
     requests: list[httpx.Request] = field(default_factory=list)
     token_requests: list[dict[str, Any]] = field(default_factory=list)
     installed: list[str] = field(default_factory=list)
+    mark_installed_status: int = 200
+    token_body_override: dict[str, Any] | None = None
     _ids: itertools.count[int] = field(default_factory=lambda: itertools.count(1))
 
     def transport(self) -> httpx.MockTransport:
@@ -70,6 +72,10 @@ class FakeRippling:
                 headers=rid,
             )
         if request.url.host == V1 and request.url.path == "/platform/api/mark_app_installed":
+            if self.mark_installed_status != 200:
+                return httpx.Response(
+                    self.mark_installed_status, json={"detail": "Forbidden."}, headers=rid
+                )
             self.installed.append(token)
             return httpx.Response(200, json={"ok": True}, headers=rid)
         if request.url.host == REST and request.url.path in ("/workers", "/workers/"):
@@ -108,6 +114,8 @@ class FakeRippling:
         n = len(self.token_requests)
         access, refresh = f"tok-{n + 1}", f"ref-{n + 1}"
         self.valid_tokens.add(access)
+        if self.token_body_override is not None:
+            return httpx.Response(200, json=self.token_body_override, headers=rid)
         return httpx.Response(
             200,
             json={

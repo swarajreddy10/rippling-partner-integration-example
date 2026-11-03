@@ -13,7 +13,14 @@ import psycopg
 import pytest
 from fake_rippling import FakeRippling
 
-from rippling_sync.oauth import OAuthApp, TokenSet, TokenStore, authorize_url, exchange_code
+from rippling_sync.oauth import (
+    CachedToken,
+    OAuthApp,
+    TokenSet,
+    TokenStore,
+    authorize_url,
+    exchange_code,
+)
 
 APP = OAuthApp("cid", "secret", "acme_sync", "https://partner.example/oauth/callback")
 NOW = datetime(2026, 11, 3, 12, 0, tzinfo=UTC)
@@ -105,3 +112,17 @@ def test_concurrent_callers_refresh_once(schema_url: str, fernet_key: bytes) -> 
 def test_unknown_company_fails_loudly(conn: psycopg.Connection[Any], fernet_key: bytes) -> None:
     with httpx.Client(transport=FakeRippling().transport()) as http, pytest.raises(LookupError):
         TokenStore(fernet_key).access_token(conn, "co_missing", http, APP, NOW)
+
+
+def test_cached_token_fetches_once_until_near_expiry() -> None:
+    calls: list[int] = []
+    now = {"t": NOW}
+
+    def fetch() -> TokenSet:
+        calls.append(1)
+        return TokenSet(f"acc-{len(calls)}", "r", now["t"] + timedelta(hours=1), "s")
+
+    token = CachedToken(fetch, clock=lambda: now["t"])
+    assert [token(), token(), token()] == ["acc-1"] * 3 and len(calls) == 1
+    now["t"] += timedelta(minutes=56)  # inside the five-minute refresh margin
+    assert token() == "acc-2" and len(calls) == 2

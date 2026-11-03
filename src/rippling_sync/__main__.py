@@ -15,7 +15,7 @@ import psycopg
 from rippling_sync import db
 from rippling_sync.client import RipplingClient
 from rippling_sync.config import Settings
-from rippling_sync.oauth import TokenStore
+from rippling_sync.oauth import CachedToken, TokenStore
 from rippling_sync.sync import sync_workers
 
 
@@ -35,11 +35,13 @@ def main(argv: list[str] | None = None) -> int:
         store = TokenStore(settings.token_key)
         with httpx.Client(timeout=30.0) as http:
 
-            def token() -> str:
-                return store.access_token(
-                    conn, args.company, http, settings.oauth_app, datetime.now(UTC)
-                )
+            def now() -> datetime:
+                return datetime.now(UTC)
 
+            token = CachedToken(
+                lambda: store.current(conn, args.company, http, settings.oauth_app, now()),
+                clock=now,
+            )
             client = RipplingClient(token, settings.api_version)
             try:
                 result = sync_workers(conn, client, args.company)

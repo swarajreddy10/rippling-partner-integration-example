@@ -205,3 +205,12 @@ def test_a_repeated_next_link_is_refused() -> None:
     )
     with pytest.raises(RipplingAPIError, match="repeated"):
         list(make(fake).paginate("/workers", limit=2))
+
+
+def test_retry_after_http_date_with_minus_zero_zone_is_read_as_utc() -> None:
+    # parsedate_to_datetime returns a naive datetime for "-0000"; HTTP dates are always GMT.
+    fake, clock = FakeRippling(workers=workers(1)), Clock()
+    when = (datetime.now(UTC) + timedelta(seconds=5)).strftime("%a, %d %b %Y %H:%M:%S -0000")
+    fake.script(429, None, {"Retry-After": when})
+    make(fake, clock).get("/workers")
+    assert len(clock.slept) == 1 and 3.0 <= clock.slept[0] <= 5.0

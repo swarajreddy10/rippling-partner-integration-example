@@ -12,10 +12,16 @@ Checked November 3, 2026. Each decision names its evidence; inference is labelle
 
 **5. Form encoding for the token request.** Rippling's example uses `curl -F` (multipart). This sample sends `application/x-www-form-urlencoded`, the format RFC 6749 section 4.1.3 requires. That Rippling's endpoint accepts it is inference from the standard; confirm with a partner test company before production.
 
-**6. `state` only for installs started by the partner.** Installs that start in the App Shop arrive without a `state`; installs started from the partner's `/install` carry one that must come back unchanged and is single use (RFC 6749 section 4.1.1). Rippling's documentation does not describe `state` (inference).
+**6. `state` only for installs started by the partner, and why that is safe here.** Installs that start in the App Shop arrive without a `state`; installs started from the partner's `/install` carry one that must come back unchanged, expires after ten minutes, and is single use (RFC 6749 section 4.1.1). Rippling's documentation does not describe `state` (inference). Accepting a callback without `state` is a cross-site request forgery risk only when the callback links the installing company to a signed-in partner user; this sample has no partner users, so a forged callback can only install the attacker's own company, which the attacker could do directly. An app that adds partner accounts must require the signed-in user to start or confirm the install.
 
 **7. Reconcile only after a complete listing, and refuse an empty one.** Marking workers removed after a partial listing would remove real people. An empty complete listing is more likely a permissions or token problem than a company with no workers, so it fails loudly. Removal is one `NOT EXISTS` over the unnested set of seen ids, which stays a hash anti-join whatever its size.
 
 **8. Skip unchanged rows.** Each worker's canonical JSON is hashed; the upsert's `WHERE` clause skips rows whose hash is unchanged and not removed, so an identical sync writes nothing.
 
-**9. v2 for data, V1 only where the install guide still requires it.** `GET /companies` uses v2; `mark_app_installed` is still documented on `api.rippling.com/platform/api`, so it is called there.
+**9. Mark installed first, store tokens after.** Tokens and the install record are written in one transaction only after `mark_app_installed` succeeds, so a 403 or an outage there leaves no usable tokens behind for the sync to pick up.
+
+**10. One sync per company at a time.** A per-company advisory lock refuses an overlapping run, because a run whose listing finished before a new hire could otherwise reconcile after another run inserted that hire and mark them removed.
+
+**11. Cache the access token in memory.** The CLI asks the token store only when the cached token is within five minutes of expiry, so a long listing does not take a row lock and decrypt a token on every page.
+
+**12. v2 for data, V1 only where the install guide still requires it.** `GET /companies` uses v2; `mark_app_installed` is still documented on `api.rippling.com/platform/api`, so it is called there.

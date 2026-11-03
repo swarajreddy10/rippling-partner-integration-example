@@ -113,3 +113,39 @@ def test_a_token_for_more_than_one_company_fails_loudly(
 def test_a_missing_code_is_a_bad_request(web: TestClient, fake: FakeRippling) -> None:
     assert web.get("/oauth/callback").status_code == 400
     assert fake.token_requests == []
+
+
+def test_a_403_from_mark_installed_stores_no_tokens(
+    web: TestClient, fake: FakeRippling, schema_url: str
+) -> None:
+    fake.mark_installed_status = 403
+    r = web.get("/oauth/callback", params={"code": "c1"})
+    assert r.status_code == 403
+    assert installs(schema_url) == []
+    with psycopg.connect(schema_url) as c:
+        assert c.execute("SELECT count(*) FROM oauth_tokens").fetchone() == (0,)
+
+
+def test_a_malformed_token_response_fails_cleanly_and_stores_nothing(
+    web: TestClient, fake: FakeRippling, schema_url: str
+) -> None:
+    fake.token_body_override = {"access_token": "tok-x", "token_type": "Bearer"}
+    r = web.get("/oauth/callback", params={"code": "c1"})
+    assert r.status_code == 502 and "token response" in r.text
+    assert installs(schema_url) == [] and fake.installed == []
+
+
+def test_a_malformed_return_url_falls_back_to_the_default(web: TestClient) -> None:
+    r = web.get("/oauth/callback", params={"code": "c1", "redirect_uri": "https://[::1"})
+    assert r.status_code == 302 and r.headers["location"] == RETURN
+
+
+def test_expired_states_are_purged(schema_url: str, web: TestClient) -> None:
+    with psycopg.connect(schema_url) as c:
+        c.execute(
+            "INSERT INTO oauth_states (state, created_at) VALUES ('old', now() - interval '1 day')"
+        )
+        c.commit()
+    web.get("/install")
+    with psycopg.connect(schema_url) as c:
+        assert c.execute("SELECT count(*) FROM oauth_states WHERE state = 'old'").fetchone() == (0,)

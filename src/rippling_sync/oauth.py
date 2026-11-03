@@ -11,6 +11,7 @@ From Rippling's installation guide (developer-portal/v2-guides/installation, che
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any
@@ -20,7 +21,7 @@ import httpx
 import psycopg
 from cryptography.fernet import Fernet
 
-from rippling_sync.client import parse_error
+from rippling_sync.client import RipplingAPIError, parse_error
 
 TOKEN_URL = "https://api.rippling.com/api/o/token/"
 AUTHORIZE_URL = "https://app.rippling.com/apps/PLATFORM/{app_name}/authorize"
@@ -62,7 +63,13 @@ def _token_request(
     response = http.post(TOKEN_URL, data=form, auth=(app.client_id, app.client_secret))
     if not response.is_success:
         raise parse_error(response)
-    body = response.json()
+    try:
+        body = response.json()
+    except ValueError as exc:
+        raise RipplingAPIError(502, "token response is not JSON") from exc
+    missing = [k for k in ("access_token", "refresh_token", "expires_in") if k not in body]
+    if missing:
+        raise RipplingAPIError(502, f"token response is missing {', '.join(missing)}")
     return TokenSet(
         access_token=body["access_token"],
         refresh_token=body["refresh_token"],
@@ -86,6 +93,24 @@ def refresh(http: httpx.Client, app: OAuthApp, refresh_token: str, now: datetime
     )
 
 
+class CachedToken:
+    """An access-token provider that asks the store only when the cached token nears expiry.
+
+    Without it, every page request would take a row lock and decrypt a token that is valid
+    for hours.
+    """
+
+    def __init__(self, fetch: Callable[[], TokenSet], clock: Callable[[], datetime]) -> None:
+        self._fetch = fetch
+        self._clock = clock
+        self._tokens: TokenSet | None = None
+
+    def __call__(self) -> str:
+        if self._tokens is None or self._tokens.expires_at - REFRESH_MARGIN <= self._clock():
+            self._tokens = self._fetch()
+        return self._tokens.access_token
+
+
 class TokenStore:
     """One token pair per company, encrypted at rest; refreshes serialise on the company's row."""
 
@@ -104,25 +129,38 @@ class TokenStore:
         app: OAuthApp,
         now: datetime,
     ) -> str:
-        """A usable access token, refreshing first if it expires within five minutes.
+        """A usable access token, refreshing first if it expires within five minutes."""
+        return self.current(conn, company_id, http, app, now).access_token
+
+    def current(
+        self,
+        conn: psycopg.Connection[Any],
+        company_id: str,
+        http: httpx.Client,
+        app: OAuthApp,
+        now: datetime,
+    ) -> TokenSet:
+        """The company's usable tokens, refreshed first if they expire within five minutes.
 
         The row lock makes concurrent callers wait for one refresh instead of each spending the
         single-use refresh token.
         """
         with conn.transaction():
             row = conn.execute(
-                "SELECT access_token_enc, refresh_token_enc, expires_at FROM oauth_tokens "
+                "SELECT access_token_enc, refresh_token_enc, expires_at, scope FROM oauth_tokens "
                 "WHERE company_id = %s FOR UPDATE",
                 (company_id,),
             ).fetchone()
             if row is None:
                 raise LookupError(f"no tokens stored for company {company_id}; install first")
-            access_enc, refresh_enc, expires_at = row
+            access_enc, refresh_enc, expires_at, scope = row
+            refresh_token = self._fernet.decrypt(bytes(refresh_enc)).decode()
             if expires_at - REFRESH_MARGIN > now:
-                return self._fernet.decrypt(bytes(access_enc)).decode()
-            fresh = refresh(http, app, self._fernet.decrypt(bytes(refresh_enc)).decode(), now)
+                access = self._fernet.decrypt(bytes(access_enc)).decode()
+                return TokenSet(access, refresh_token, expires_at, scope)
+            fresh = refresh(http, app, refresh_token, now)
             self._upsert(conn, company_id, fresh)
-            return fresh.access_token
+            return fresh
 
     def _upsert(self, conn: psycopg.Connection[Any], company_id: str, tokens: TokenSet) -> None:
         conn.execute(

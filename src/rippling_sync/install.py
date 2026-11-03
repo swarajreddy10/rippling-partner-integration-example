@@ -46,6 +46,9 @@ def create_app(
     def install(request: Request) -> Response:
         state = secrets.token_urlsafe(32)
         with connect() as conn:
+            # States live in database time; abandoned ones are purged here, so the table stays
+            # bounded by the issue rate within one TTL.
+            conn.execute("DELETE FROM oauth_states WHERE created_at <= now() - %s", (state_ttl,))
             conn.execute("INSERT INTO oauth_states (state) VALUES (%s)", (state,))
         return RedirectResponse(authorize_url(oauth_app, state), status_code=302)
 
@@ -57,8 +60,9 @@ def create_app(
         with connect() as conn:
             if state is not None:
                 used = conn.execute(
-                    "DELETE FROM oauth_states WHERE state = %s AND created_at > %s RETURNING 1",
-                    (state, now() - state_ttl),
+                    "DELETE FROM oauth_states WHERE state = %s AND created_at > now() - %s"
+                    " RETURNING 1",
+                    (state, state_ttl),
                 ).fetchone()
                 conn.commit()
                 if used is None:
@@ -79,7 +83,7 @@ def create_app(
                             status_code=502,
                         )
                     company_id = str(companies[0]["id"])
-                    store.save(conn, company_id, tokens)
+                    # Mark first, persist after: tokens are kept only for a completed install.
                     marked = http.post(
                         MARK_INSTALLED_URL,
                         headers={"Authorization": f"Bearer {tokens.access_token}"},
@@ -89,7 +93,13 @@ def create_app(
                 except RipplingAPIError as err:
                     status = 403 if err.status == 403 else 502 if err.status >= 500 else 400
                     return PlainTextResponse(f"install not completed: {err}", status_code=status)
+                except httpx.TransportError as err:
+                    return PlainTextResponse(
+                        f"install not completed: could not reach Rippling ({err})",
+                        status_code=502,
+                    )
             with conn.transaction():
+                store.save(conn, company_id, tokens)
                 conn.execute(
                     "INSERT INTO installs (company_id) VALUES (%s) ON CONFLICT"
                     " (company_id) DO UPDATE SET installed_at = now()",
@@ -105,7 +115,10 @@ def create_app(
 def _return_url(candidate: str | None, default: str) -> str:
     """Follow Rippling's return URL only when it is HTTPS on app.rippling.com (no open redirect)."""
     if candidate:
-        url = httpx.URL(candidate)
+        try:
+            url = httpx.URL(candidate)
+        except httpx.InvalidURL:
+            return default
         if url.scheme == "https" and url.host == RETURN_HOST and not url.userinfo:
             return candidate
     return default

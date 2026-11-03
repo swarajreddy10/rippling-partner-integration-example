@@ -120,6 +120,8 @@ def _retry_after_seconds(value: str | None) -> float | None:
         when = parsedate_to_datetime(value)
     except (TypeError, ValueError):
         return None
+    if when.tzinfo is None:  # "-0000" parses as naive; an HTTP-date is always GMT
+        when = when.replace(tzinfo=UTC)
     return max(0.0, (when - datetime.now(UTC)).total_seconds())
 
 
