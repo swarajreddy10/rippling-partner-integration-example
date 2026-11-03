@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=80"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rippling-worker-sync"
+version = "0.1.0"
+description = "A Rippling App Shop-style install and worker sync, built from Rippling's published v2 API documentation."
+readme = "README.md"
+requires-python = ">=3.12"
+license = "MIT"
+dependencies = [
+    "httpx>=0.28,<0.29",
+    "starlette>=1.10,<2",
+    "psycopg[binary]>=3.3,<4",
+    "cryptography>=45",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=9", "ruff>=0.17", "mypy>=2.4", "httpx2>=2.16"]
+serve = ["uvicorn>=0.35"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "tests"]
+addopts = "-ra --strict-markers"
+filterwarnings = ["error"]
+markers = ["db: needs a real Postgres (DATABASE_URL)"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM", "RUF"]
+
+[tool.mypy]
+strict = true
+files = ["src"]
