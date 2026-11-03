@@ -6,7 +6,7 @@ import pytest
 from cryptography.fernet import Fernet
 from starlette.applications import Starlette
 
-from rippling_sync import web
+from rippling_partner import web
 
 
 def test_factory_builds_the_install_app(monkeypatch: pytest.MonkeyPatch) -> None:

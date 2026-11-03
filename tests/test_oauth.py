@@ -13,7 +13,7 @@ import psycopg
 import pytest
 from fake_rippling import FakeRippling
 
-from rippling_sync.oauth import (
+from rippling_partner.oauth import (
     CachedToken,
     OAuthApp,
     TokenSet,

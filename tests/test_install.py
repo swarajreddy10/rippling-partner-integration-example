@@ -12,8 +12,8 @@ import pytest
 from fake_rippling import FakeRippling
 from starlette.testclient import TestClient
 
-from rippling_sync.install import create_app
-from rippling_sync.oauth import OAuthApp, TokenStore
+from rippling_partner.install import create_app
+from rippling_partner.oauth import OAuthApp, TokenStore
 
 pytestmark = pytest.mark.db
 

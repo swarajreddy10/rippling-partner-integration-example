@@ -8,8 +8,13 @@ import psycopg
 import pytest
 from fake_rippling import FakeRippling
 
-from rippling_sync.client import RetryPolicy, RipplingAPIError, RipplingClient
-from rippling_sync.sync import EmptyListingRefused, SyncAlreadyRunning, sync_workers
+from rippling_partner.client import RetryPolicy, RipplingAPIError, RipplingClient
+from rippling_partner.sync import (
+    LOCK_PREFIX,
+    EmptyListingRefused,
+    SyncAlreadyRunning,
+    sync_workers,
+)
 
 pytestmark = pytest.mark.db
 
@@ -140,7 +145,7 @@ def test_a_second_sync_of_the_same_company_waits_its_turn(
 ) -> None:
     holder = psycopg.connect(schema_url, autocommit=True)
     try:
-        holder.execute("SELECT pg_advisory_lock(hashtext('rippling-worker-sync:co_1'))")
+        holder.execute("SELECT pg_advisory_lock(hashtext(%s))", (f"{LOCK_PREFIX}co_1",))
         with pytest.raises(SyncAlreadyRunning):
             sync_workers(conn, client(FakeRippling(workers=people(1))), "co_1")
         assert conn.execute("SELECT count(*) FROM sync_runs").fetchone() == (0,)

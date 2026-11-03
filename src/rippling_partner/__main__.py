@@ -1,4 +1,4 @@
-"""Command line: ``python -m rippling_sync migrate`` and ``... sync --company ID``."""
+"""Command line: ``python -m rippling_partner migrate`` and ``... sync --company ID``."""
 
 from __future__ import annotations
 
@@ -12,15 +12,15 @@ from datetime import UTC, datetime
 import httpx
 import psycopg
 
-from rippling_sync import db
-from rippling_sync.client import RipplingClient
-from rippling_sync.config import Settings
-from rippling_sync.oauth import CachedToken, TokenStore
-from rippling_sync.sync import sync_workers
+from rippling_partner import db
+from rippling_partner.client import RipplingClient
+from rippling_partner.config import Settings
+from rippling_partner.oauth import CachedToken, TokenStore
+from rippling_partner.sync import sync_workers
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="rippling_sync")
+    parser = argparse.ArgumentParser(prog="rippling_partner")
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("migrate", help="create or update the database schema")
     run = sub.add_parser("sync", help="sync one installed company's workers")

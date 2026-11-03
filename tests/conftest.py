@@ -10,7 +10,7 @@ import psycopg
 import pytest
 from cryptography.fernet import Fernet
 
-from rippling_sync import db
+from rippling_partner import db
 
 
 @pytest.fixture

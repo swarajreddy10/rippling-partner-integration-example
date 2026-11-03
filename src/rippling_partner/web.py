@@ -1,4 +1,4 @@
-"""ASGI entry point: ``uvicorn --factory rippling_sync.web:app``."""
+"""ASGI entry point: ``uvicorn --factory rippling_partner.web:app``."""
 
 from __future__ import annotations
 
@@ -8,9 +8,9 @@ from typing import Any
 import psycopg
 from starlette.applications import Starlette
 
-from rippling_sync.config import Settings
-from rippling_sync.install import create_app
-from rippling_sync.oauth import TokenStore
+from rippling_partner.config import Settings
+from rippling_partner.install import create_app
+from rippling_partner.oauth import TokenStore
 
 
 def app() -> Starlette:

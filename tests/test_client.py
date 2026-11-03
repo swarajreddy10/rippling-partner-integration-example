@@ -9,7 +9,7 @@ import httpx
 import pytest
 from fake_rippling import FakeRippling
 
-from rippling_sync.client import RetryPolicy, RipplingAPIError, RipplingClient, parse_error
+from rippling_partner.client import RetryPolicy, RipplingAPIError, RipplingClient, parse_error
 
 VERSION = "2025-08-01"
 

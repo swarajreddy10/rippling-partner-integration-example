@@ -1,8 +1,8 @@
-# rippling-worker-sync
+# rippling-partner-integration-example
 
-A small Python sample of the first two things a Rippling App Shop partner integration has to get right: **installing through OAuth** and **keeping a local copy of a company's workers correct**. Every behaviour below follows Rippling's published v2 documentation, and each one has a test.
+An unofficial example of the first two things a Rippling App Shop partner integration has to get right: **installing through OAuth** and **keeping a local copy of a company's workers (employment records) correct**. Every behaviour below follows Rippling's published v2 documentation, and each one has a test.
 
-Not affiliated with Rippling. It has **not** been run against a live Rippling company: Rippling issues partner test companies only to approved App Shop partners, so the tests run against a local fake built from the documented contract (`tests/fake_rippling.py`) and a real Postgres.
+Not affiliated with or endorsed by Rippling. It has **not** been run against a live Rippling company: Rippling issues partner test companies only to approved App Shop partners, so the tests run against a local fake built from the documented contract (`tests/fake_rippling.py`) and a real Postgres.
 
 ## What it does
 
@@ -43,17 +43,17 @@ To use it for real you need App Shop partner credentials: set `TOKEN_ENCRYPTION_
 
 ```sh
 pip install -e ".[serve]"
-python -m rippling_sync migrate
-uvicorn --factory rippling_sync.web:app        # install endpoints: /install, /oauth/callback
-python -m rippling_sync sync --company <company id>
+python -m rippling_partner migrate
+uvicorn --factory rippling_partner.web:app        # install endpoints: /install, /oauth/callback
+python -m rippling_partner sync --company <company id>
 ```
 
 ## Layout
 
-- `src/rippling_sync/client.py`: version pinning, cursor paging, retries, error parsing
-- `src/rippling_sync/oauth.py`: authorize URL, code exchange, rotating refresh, encrypted token store
-- `src/rippling_sync/install.py`: the install endpoints
-- `src/rippling_sync/sync.py`: worker sync and reconciliation
+- `src/rippling_partner/client.py`: version pinning, cursor paging, retries, error parsing
+- `src/rippling_partner/oauth.py`: authorize URL, code exchange, rotating refresh, encrypted token store
+- `src/rippling_partner/install.py`: the install endpoints
+- `src/rippling_partner/sync.py`: worker sync and reconciliation
 - `docs/spec.md`: what was agreed before code; `docs/decisions.md`: why it is built this way
 
 ## Licence

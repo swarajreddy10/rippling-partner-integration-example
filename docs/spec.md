@@ -1,4 +1,4 @@
-# Spec: rippling-worker-sync
+# Spec: rippling-partner-integration-example
 
 Status: agreed November 3, 2026. Scope, test target, publishing, and SDK choice were chosen by the author from options with recommendations; everything below them is derived from Rippling's published documentation, fetched November 3, 2026.
 
@@ -20,11 +20,11 @@ Out (stated in the README as not done): SSO (SAML or OpenID), user provisioning,
 
 ## Interfaces
 
-- `rippling_sync.client.RipplingClient(token_provider, api_version, *, transport=None)`: `get(path, params)`, `paginate(path, params, limit=100) -> Iterator[dict]`.
-- `rippling_sync.oauth`: `authorize_url(app, state)`, `exchange_code(...)`, `refresh(...)`; `TokenStore` (Postgres; both tokens encrypted at rest with Fernet, key from the environment) with `save`, `current`, and `access_token`; `CachedToken`, which asks the store only when the cached token nears expiry.
-- `rippling_sync.install.create_app(...)`: a Starlette app with `GET /install` and `GET /oauth/callback`; `rippling_sync.web.app()` builds it from the environment.
-- `rippling_sync.sync.sync_workers(conn, client, company_id) -> RunResult`.
-- CLI: `python -m rippling_sync migrate`, `python -m rippling_sync sync --company <id>`.
+- `rippling_partner.client.RipplingClient(token_provider, api_version, *, transport=None)`: `get(path, params)`, `paginate(path, params, limit=100) -> Iterator[dict]`.
+- `rippling_partner.oauth`: `authorize_url(app, state)`, `exchange_code(...)`, `refresh(...)`; `TokenStore` (Postgres; both tokens encrypted at rest with Fernet, key from the environment) with `save`, `current`, and `access_token`; `CachedToken`, which asks the store only when the cached token nears expiry.
+- `rippling_partner.install.create_app(...)`: a Starlette app with `GET /install` and `GET /oauth/callback`; `rippling_partner.web.app()` builds it from the environment.
+- `rippling_partner.sync.sync_workers(conn, client, company_id) -> RunResult`.
+- CLI: `python -m rippling_partner migrate`, `python -m rippling_partner sync --company <id>`.
 
 ## Data model (Postgres)
 

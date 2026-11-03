@@ -3,9 +3,9 @@ requires = ["setuptools>=80"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "rippling-worker-sync"
+name = "rippling-partner-integration-example"
 version = "0.1.0"
-description = "A Rippling App Shop-style install and worker sync, built from Rippling's published v2 API documentation."
+description = "Unofficial example of a Rippling App Shop partner integration: OAuth install and employee sync, built from Rippling's published v2 API documentation."
 readme = "README.md"
 requires-python = ">=3.12"
 license = "MIT"

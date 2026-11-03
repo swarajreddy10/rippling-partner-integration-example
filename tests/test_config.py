@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from rippling_sync.config import Settings
+from rippling_partner.config import Settings
 
 FULL = {
     "DATABASE_URL": "postgresql://localhost/x",

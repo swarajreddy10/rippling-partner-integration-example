@@ -21,7 +21,7 @@ import httpx
 import psycopg
 from cryptography.fernet import Fernet
 
-from rippling_sync.client import RipplingAPIError, parse_error
+from rippling_partner.client import RipplingAPIError, parse_error
 
 TOKEN_URL = "https://api.rippling.com/api/o/token/"
 AUTHORIZE_URL = "https://app.rippling.com/apps/PLATFORM/{app_name}/authorize"

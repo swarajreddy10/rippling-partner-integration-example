@@ -23,8 +23,8 @@ from starlette.requests import Request
 from starlette.responses import PlainTextResponse, RedirectResponse, Response
 from starlette.routing import Route
 
-from rippling_sync.client import RipplingAPIError, RipplingClient, parse_error
-from rippling_sync.oauth import OAuthApp, TokenStore, authorize_url, exchange_code
+from rippling_partner.client import RipplingAPIError, RipplingClient, parse_error
+from rippling_partner.oauth import OAuthApp, TokenStore, authorize_url, exchange_code
 
 MARK_INSTALLED_URL = "https://api.rippling.com/platform/api/mark_app_installed"
 RETURN_HOST = "app.rippling.com"

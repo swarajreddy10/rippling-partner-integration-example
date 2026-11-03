@@ -16,10 +16,10 @@ from typing import Any
 import psycopg
 from psycopg.types.json import Jsonb
 
-from rippling_sync.client import RipplingClient
+from rippling_partner.client import RipplingClient
 
 BATCH = 500
-LOCK_PREFIX = "rippling-worker-sync:"
+LOCK_PREFIX = "rippling-partner:sync:"
 
 _UPSERT = """
 INSERT INTO workers AS w (company_id, worker_id, payload, content_hash, first_seen_run,

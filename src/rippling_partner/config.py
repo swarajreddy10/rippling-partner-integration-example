@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 
-from rippling_sync.oauth import OAuthApp
+from rippling_partner.oauth import OAuthApp
 
 REQUIRED = (
     "DATABASE_URL",
