@@ -13,15 +13,17 @@ from __future__ import annotations
 
 import secrets
 from collections.abc import Callable
+from contextlib import AbstractContextManager
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-import httpx
+import httpx2
 import psycopg
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import PlainTextResponse, RedirectResponse, Response
 from starlette.routing import Route
+from starlette.types import Lifespan
 
 from rippling_partner.client import RipplingAPIError, RipplingClient, parse_error
 from rippling_partner.oauth import OAuthApp, TokenStore, authorize_url, exchange_code
@@ -34,12 +36,15 @@ def create_app(
     *,
     oauth_app: OAuthApp,
     store: TokenStore,
-    connect: Callable[[], psycopg.Connection[Any]],
+    connect: Callable[[], AbstractContextManager[psycopg.Connection[Any]]],
     api_version: str,
-    transport: httpx.BaseTransport | None = None,
+    transport: httpx2.BaseTransport | None = None,
     clock: Callable[[], datetime] | None = None,
     state_ttl: timedelta = timedelta(minutes=10),
+    lifespan: Lifespan[Starlette] | None = None,
 ) -> Starlette:
+    """The install app. ``connect`` yields a connection that commits on a normal exit: a
+    psycopg pool's ``connection`` in production, or ``psycopg.connect`` in tests."""
     now = clock or (lambda: datetime.now(UTC))
     default_return = f"https://{RETURN_HOST}/apps/PLATFORM/{oauth_app.app_name}/return"
 
@@ -67,7 +72,7 @@ def create_app(
                 conn.commit()
                 if used is None:
                     return PlainTextResponse("unknown or expired state", status_code=400)
-            with httpx.Client(transport=transport, timeout=30.0) as http:
+            with httpx2.Client(transport=transport, timeout=30.0) as http:
                 try:
                     tokens = exchange_code(http, oauth_app, code, now())
                     rippling = RipplingClient(
@@ -93,7 +98,7 @@ def create_app(
                 except RipplingAPIError as err:
                     status = 403 if err.status == 403 else 502 if err.status >= 500 else 400
                     return PlainTextResponse(f"install not completed: {err}", status_code=status)
-                except httpx.TransportError as err:
+                except httpx2.TransportError as err:
                     return PlainTextResponse(
                         f"install not completed: could not reach Rippling ({err})",
                         status_code=502,
@@ -109,15 +114,18 @@ def create_app(
             _return_url(request.query_params.get("redirect_uri"), default_return), status_code=302
         )
 
-    return Starlette(routes=[Route("/install", install), Route("/oauth/callback", callback)])
+    return Starlette(
+        routes=[Route("/install", install), Route("/oauth/callback", callback)],
+        lifespan=lifespan,
+    )
 
 
 def _return_url(candidate: str | None, default: str) -> str:
     """Follow Rippling's return URL only when it is HTTPS on app.rippling.com (no open redirect)."""
     if candidate:
         try:
-            url = httpx.URL(candidate)
-        except httpx.InvalidURL:
+            url = httpx2.URL(candidate)
+        except httpx2.InvalidURL:
             return default
         if url.scheme == "https" and url.host == RETURN_HOST and not url.userinfo:
             return candidate

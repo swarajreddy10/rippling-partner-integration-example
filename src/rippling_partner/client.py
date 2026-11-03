@@ -20,7 +20,7 @@ from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from typing import Any
 
-import httpx
+import httpx2
 
 RETRYABLE_STATUS = frozenset({429, 500, 504})
 _VERSION = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -35,6 +35,13 @@ class RetryPolicy:
     max_delay: float = 30.0
     retry_after_cap: float = 60.0
     deadline: float = 120.0
+
+    def __post_init__(self) -> None:
+        if self.max_attempts < 1:
+            raise ValueError(f"RetryPolicy needs at least one attempt, got {self.max_attempts}")
+        for name in ("base_delay", "max_delay", "retry_after_cap", "deadline"):
+            if getattr(self, name) < 0:
+                raise ValueError(f"RetryPolicy.{name} must not be negative")
 
 
 DEFAULT_RETRY = RetryPolicy()
@@ -64,7 +71,7 @@ class RipplingAPIError(Exception):
         self.body = body
 
 
-def parse_error(response: httpx.Response) -> RipplingAPIError:
+def parse_error(response: httpx2.Response) -> RipplingAPIError:
     """Read any of the four error shapes live on Rippling's API today.
 
     ``{"error", "message"}``, ``{"code", "message", "field_errors"}``, ``{"detail"}``, and
@@ -133,7 +140,7 @@ class RipplingClient:
         token_provider: Callable[[], str],
         api_version: str,
         *,
-        transport: httpx.BaseTransport | None = None,
+        transport: httpx2.BaseTransport | None = None,
         retry: RetryPolicy = DEFAULT_RETRY,
         sleep: Callable[[float], None] | None = None,
         clock: Callable[[], float] | None = None,
@@ -149,8 +156,8 @@ class RipplingClient:
         self._sleep = sleep or time.sleep
         self._clock = clock or time.monotonic
         self._rng = rng or random.random
-        self._origin = httpx.URL(self.BASE_URL)
-        self._http = httpx.Client(base_url=self.BASE_URL, transport=transport, timeout=30.0)
+        self._origin = httpx2.URL(self.BASE_URL)
+        self._http = httpx2.Client(base_url=self.BASE_URL, transport=transport, timeout=30.0)
 
     def get(self, path_or_url: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
         """GET one resource or page, retrying only what Rippling documents as retryable."""
@@ -159,7 +166,7 @@ class RipplingClient:
         for attempt in range(self._retry.max_attempts):
             try:
                 response = self._http.get(path_or_url, params=params, headers=self._headers())
-            except httpx.TransportError as exc:
+            except httpx2.TransportError as exc:
                 last = RipplingAPIError(0, f"transport error: {exc}")
                 delay = self._backoff(attempt)
             else:
@@ -180,7 +187,8 @@ class RipplingClient:
             if self._clock() - started + delay > self._retry.deadline:
                 break
             self._sleep(delay)
-        assert last is not None
+        if last is None:  # RetryPolicy guarantees at least one attempt
+            raise RuntimeError("no attempt was made")
         raise last
 
     def paginate(
@@ -198,7 +206,7 @@ class RipplingClient:
             next_link = page.get("next_link")
             if not next_link:
                 return
-            url = httpx.URL(next_link)
+            url = httpx2.URL(next_link)
             if (url.scheme, url.host, url.port) != (
                 self._origin.scheme,
                 self._origin.host,

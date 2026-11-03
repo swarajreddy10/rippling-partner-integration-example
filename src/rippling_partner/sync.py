@@ -41,11 +41,11 @@ WHERE w.company_id = %(company)s AND w.removed_at IS NULL
 """
 
 
-class EmptyListingRefused(Exception):
+class EmptyListingError(Exception):
     """A complete listing returned no workers; reconciling it would remove everyone."""
 
 
-class SyncAlreadyRunning(Exception):
+class SyncAlreadyRunningError(Exception):
     """Another sync of the same company holds its lock."""
 
 
@@ -74,7 +74,7 @@ def sync_workers(
     with conn.transaction():
         acquired = conn.execute("SELECT pg_try_advisory_lock(hashtext(%s))", (lock_key,)).fetchone()
     if not acquired or not acquired[0]:
-        raise SyncAlreadyRunning(f"company {company_id}: another sync holds the lock")
+        raise SyncAlreadyRunningError(f"company {company_id}: another sync holds the lock")
     try:
         return _sync_locked(conn, client, company_id)
     finally:
@@ -89,7 +89,8 @@ def _sync_locked(
         row = conn.execute(
             "INSERT INTO sync_runs (company_id) VALUES (%s) RETURNING run_id", (company_id,)
         ).fetchone()
-    assert row is not None
+    if row is None:
+        raise RuntimeError("INSERT ... RETURNING run_id returned no row")
     run_id: int = row[0]
     # A listing can return the same worker twice (for example when rows move while the cursor
     # pages). One statement cannot update a row twice, so each batch keeps the latest copy.
@@ -131,7 +132,7 @@ def _sync_locked(
 
     if not seen:
         _finish(conn, run_id, "refused", 0, counts, 0, "complete listing returned no workers")
-        raise EmptyListingRefused(f"company {company_id}: complete listing returned no workers")
+        raise EmptyListingError(f"company {company_id}: complete listing returned no workers")
 
     with conn.transaction():
         removed = conn.execute(_RECONCILE, {"company": company_id, "seen": list(seen)}).rowcount

@@ -13,7 +13,7 @@ Read Rippling's agent index first: <https://developer.rippling.com/llms.txt>. Ev
 3. Make the test pass, then run every check:
 
 ```sh
-ruff check . && ruff format --check . && mypy && pytest
+uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run pytest
 ```
 
 Database tests need `DATABASE_URL` pointing at a real Postgres; they fail rather than skip without it.

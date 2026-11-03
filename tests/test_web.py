@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 from cryptography.fernet import Fernet
 from starlette.applications import Starlette
+from starlette.testclient import TestClient
 
 from rippling_partner import web
 
@@ -30,3 +31,27 @@ def test_factory_fails_without_settings(monkeypatch: pytest.MonkeyPatch) -> None
     monkeypatch.delenv("DATABASE_URL", raising=False)
     with pytest.raises(RuntimeError, match="DATABASE_URL"):
         web.app()
+
+
+@pytest.mark.db
+def test_the_app_serves_requests_through_a_connection_pool(
+    monkeypatch: pytest.MonkeyPatch, schema_url: str
+) -> None:
+    env = {
+        "DATABASE_URL": schema_url,
+        "TOKEN_ENCRYPTION_KEY": Fernet.generate_key().decode(),
+        "RIPPLING_CLIENT_ID": "cid",
+        "RIPPLING_CLIENT_SECRET": "secret",
+        "RIPPLING_APP_NAME": "acme_sync",
+        "RIPPLING_REDIRECT_URI": "https://partner.example/oauth/callback",
+        "RIPPLING_API_VERSION": "2025-08-01",
+    }
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+    application = web.app()
+    with TestClient(application, follow_redirects=False) as client:
+        assert client.get("/install").status_code == 302
+        assert client.get("/install").status_code == 302
+        stats = application.state.pool.get_stats()
+    assert stats["requests_num"] == 2
+    assert application.state.pool.closed

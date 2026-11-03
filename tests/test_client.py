@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from email.utils import format_datetime
+from typing import TypedDict, Unpack
 
-import httpx
+import httpx2
 import pytest
 from fake_rippling import FakeRippling
 
@@ -27,7 +28,17 @@ class Clock:
         self.t += s
 
 
-def make(fake: FakeRippling, clock: Clock | None = None, **retry: float) -> RipplingClient:
+class RetryOptions(TypedDict, total=False):
+    max_attempts: int
+    base_delay: float
+    max_delay: float
+    retry_after_cap: float
+    deadline: float
+
+
+def make(
+    fake: FakeRippling, clock: Clock | None = None, **retry: Unpack[RetryOptions]
+) -> RipplingClient:
     clock = clock or Clock()
     return RipplingClient(
         lambda: "tok-1",
@@ -91,7 +102,8 @@ def test_retry_after_as_http_date() -> None:
     when = format_datetime(datetime.now(UTC) + timedelta(seconds=5), usegmt=True)
     fake.script(429, None, {"Retry-After": when})
     make(fake, clock).get("/workers")
-    assert len(clock.slept) == 1 and 3.0 <= clock.slept[0] <= 5.0
+    assert len(clock.slept) == 1
+    assert 3.0 <= clock.slept[0] <= 5.0
 
 
 def test_429_without_retry_after_uses_full_jitter_backoff() -> None:
@@ -126,7 +138,8 @@ def test_attempt_budget_ends_retries_with_the_last_error() -> None:
         fake.script(500, {"error": "server_error", "message": "still down"})
     with pytest.raises(RipplingAPIError) as err:
         make(fake, max_attempts=3).get("/workers")
-    assert err.value.status == 500 and len(fake.requests) == 3
+    assert err.value.status == 500
+    assert len(fake.requests) == 3
 
 
 def test_deadline_ends_retries_instead_of_sleeping_past_it() -> None:
@@ -134,23 +147,24 @@ def test_deadline_ends_retries_instead_of_sleeping_past_it() -> None:
     fake.script(429, None, {"Retry-After": "50"})
     with pytest.raises(RipplingAPIError) as err:
         make(fake, clock, deadline=10.0).get("/workers")
-    assert err.value.status == 429 and clock.slept == []
+    assert err.value.status == 429
+    assert clock.slept == []
 
 
 def test_connection_errors_are_retried() -> None:
     calls = {"n": 0}
     fake = FakeRippling(workers=workers(1))
 
-    def flaky(request: httpx.Request) -> httpx.Response:
+    def flaky(request: httpx2.Request) -> httpx2.Response:
         calls["n"] += 1
         if calls["n"] == 1:
-            raise httpx.ConnectError("reset", request=request)
+            raise httpx2.ConnectError("reset", request=request)
         return fake.handle(request)
 
     client = RipplingClient(
         lambda: "tok-1",
         VERSION,
-        transport=httpx.MockTransport(flaky),
+        transport=httpx2.MockTransport(flaky),
         sleep=lambda s: None,
         clock=lambda: 0.0,
         rng=lambda: 0.0,
@@ -179,14 +193,15 @@ def test_connection_errors_are_retried() -> None:
 def test_each_live_error_shape_parses(
     body: dict[str, object], code: str | None, message: str
 ) -> None:
-    r = httpx.Response(400, json=body, headers={"x-rippling-request-id": "req-9"})
+    r = httpx2.Response(400, json=body, headers={"x-rippling-request-id": "req-9"})
     err = parse_error(r)
     assert (err.status, err.code, err.message, err.request_id) == (400, code, message, "req-9")
 
 
 def test_non_json_error_body_is_kept_as_text() -> None:
-    err = parse_error(httpx.Response(502, content=b"<html>Bad gateway</html>"))
-    assert err.status == 502 and "Bad gateway" in err.message
+    err = parse_error(httpx2.Response(502, content=b"<html>Bad gateway</html>"))
+    assert err.status == 502
+    assert "Bad gateway" in err.message
 
 
 def test_next_link_to_another_host_is_refused_and_not_followed() -> None:
@@ -213,4 +228,13 @@ def test_retry_after_http_date_with_minus_zero_zone_is_read_as_utc() -> None:
     when = (datetime.now(UTC) + timedelta(seconds=5)).strftime("%a, %d %b %Y %H:%M:%S -0000")
     fake.script(429, None, {"Retry-After": when})
     make(fake, clock).get("/workers")
-    assert len(clock.slept) == 1 and 3.0 <= clock.slept[0] <= 5.0
+    assert len(clock.slept) == 1
+    assert 3.0 <= clock.slept[0] <= 5.0
+
+
+@pytest.mark.parametrize(
+    "bad", [{"max_attempts": 0}, {"base_delay": -1.0}, {"deadline": -1.0}, {"retry_after_cap": -1}]
+)
+def test_a_retry_policy_that_cannot_make_a_request_is_rejected(bad: dict[str, float]) -> None:
+    with pytest.raises(ValueError, match="RetryPolicy"):
+        RetryPolicy(**bad)  # type: ignore[arg-type]

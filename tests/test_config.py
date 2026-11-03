@@ -19,14 +19,16 @@ FULL = {
 
 def test_settings_load_from_the_environment() -> None:
     s = Settings.from_env(FULL)
-    assert s.oauth_app.app_name == "acme_sync" and s.api_version == "2025-08-01"
+    assert s.oauth_app.app_name == "acme_sync"
+    assert s.api_version == "2025-08-01"
 
 
 def test_every_missing_setting_is_named() -> None:
     env = {k: v for k, v in FULL.items() if k not in ("RIPPLING_CLIENT_SECRET", "DATABASE_URL")}
     with pytest.raises(RuntimeError) as err:
         Settings.from_env(env)
-    assert "DATABASE_URL" in str(err.value) and "RIPPLING_CLIENT_SECRET" in str(err.value)
+    assert "DATABASE_URL" in str(err.value)
+    assert "RIPPLING_CLIENT_SECRET" in str(err.value)
 
 
 def test_redirect_uri_must_be_https() -> None:

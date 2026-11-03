@@ -35,7 +35,7 @@ Out (stated in the README as not done): SSO (SAML or OpenID), user provisioning,
 
 ## Tests (written first, each watched failing for the right reason)
 
-Against a local fake of the documented contract (httpx `MockTransport`) and a real Postgres:
+Against a local fake of the documented contract (httpx2 `MockTransport`) and a real Postgres:
 
 - pagination follows `next_link` to null and stops; a `limit` outside 1..100 raises before any request
 - the version header is on every request
@@ -49,7 +49,7 @@ Against a local fake of the documented contract (httpx `MockTransport`) and a re
 
 ## Acceptance
 
-- `ruff check`, `ruff format --check`, `mypy --strict src`, and `pytest` pass locally and in GitHub Actions (Postgres service container; actions pinned to commit SHAs).
+- `ruff check`, `ruff format --check`, `mypy` (strict, source and tests), and `pytest` pass locally and in GitHub Actions on Python 3.12 to 3.14 (Postgres service container; actions pinned to commit SHAs).
 - The README maps each behaviour to its Rippling documentation URL and the date it was checked, and states what is not done.
 - `docs/decisions.md`, one page: why a hand-written HTTP layer (no public Python REST SDK found on November 3, 2026), the retry policy source, token rotation, and reconciliation guards.
 - An `AGENTS.md` that points coding agents at Rippling's `llms.txt` and this repo's checks.

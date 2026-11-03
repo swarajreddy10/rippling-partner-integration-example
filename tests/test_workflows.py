@@ -40,4 +40,5 @@ def test_every_action_is_pinned_to_a_commit_sha(workflow: Path) -> None:
 )
 def test_the_guard_catches_every_spelling_of_an_unpinned_reference(line: str) -> None:
     refs = references(line)
-    assert refs and not PINNED.match(refs[0])
+    assert refs
+    assert not PINNED.match(refs[0])

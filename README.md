@@ -31,30 +31,35 @@ SSO (SAML or OpenID), user provisioning, webhooks, the 24-hour scheduled sync an
 
 ## Run it
 
+Needs [uv](https://docs.astral.sh/uv/) and Docker. `uv sync` installs the locked dependencies, including the dev tools.
+
 ```sh
-python -m venv .venv && . .venv/bin/activate      # Windows: .venv\Scripts\activate
-pip install -e ".[dev]"
-docker run -d --name rws-pg -e POSTGRES_PASSWORD=test -e POSTGRES_DB=rws -p 5432:5432 postgres:17.10
+docker compose up -d                               # Postgres 17.10 on localhost:5432
 export DATABASE_URL=postgresql://postgres:test@localhost:5432/rws
-ruff check . && ruff format --check . && mypy && pytest
+uv sync
+uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run pytest
 ```
 
 To use it for real you need App Shop partner credentials: set `TOKEN_ENCRYPTION_KEY` (a Fernet key), `RIPPLING_CLIENT_ID`, `RIPPLING_CLIENT_SECRET`, `RIPPLING_APP_NAME`, `RIPPLING_REDIRECT_URI` (https), and `RIPPLING_API_VERSION`, then:
 
 ```sh
-pip install -e ".[serve]"
-python -m rippling_partner migrate
-uvicorn --factory rippling_partner.web:app        # install endpoints: /install, /oauth/callback
-python -m rippling_partner sync --company <company id>
+uv sync --extra serve
+uv run python -m rippling_partner migrate
+uv run uvicorn --factory rippling_partner.web:app   # /install and /oauth/callback, pooled DB
+uv run python -m rippling_partner sync --company <company id>
 ```
 
 ## Layout
 
 - `src/rippling_partner/client.py`: version pinning, cursor paging, retries, error parsing
 - `src/rippling_partner/oauth.py`: authorize URL, code exchange, rotating refresh, encrypted token store
-- `src/rippling_partner/install.py`: the install endpoints
+- `src/rippling_partner/install.py`: the install endpoints; `web.py` serves them with a connection pool
 - `src/rippling_partner/sync.py`: worker sync and reconciliation
 - `docs/spec.md`: what was agreed before code; `docs/decisions.md`: why it is built this way
+
+## Maintenance
+
+CI runs on Python 3.12, 3.13, and 3.14 against Postgres, with every action pinned to a commit SHA and no token permissions beyond reading the repository. Dependabot proposes action and dependency updates weekly, a week after each release.
 
 ## Licence
 

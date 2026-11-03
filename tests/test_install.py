@@ -78,7 +78,8 @@ def test_install_binds_the_company_saves_tokens_marks_installed_and_returns(
     web: TestClient, fake: FakeRippling, schema_url: str
 ) -> None:
     r = web.get("/oauth/callback", params={"code": "c1", "redirect_uri": RETURN})
-    assert r.status_code == 302 and r.headers["location"] == RETURN
+    assert r.status_code == 302
+    assert r.headers["location"] == RETURN
     assert fake.installed == ["tok-2"]
     assert installs(schema_url) == [("co_1",)]
     with psycopg.connect(schema_url) as c:
@@ -91,14 +92,16 @@ def test_a_403_while_binding_the_company_leaves_the_install_unmarked(
     fake.revoked_tokens.add("tok-2")
     r = web.get("/oauth/callback", params={"code": "c1"})
     assert r.status_code == 403
-    assert fake.installed == [] and installs(schema_url) == []
+    assert fake.installed == []
+    assert installs(schema_url) == []
 
 
 def test_a_return_url_outside_app_rippling_com_is_not_followed(web: TestClient) -> None:
     r = web.get(
         "/oauth/callback", params={"code": "c1", "redirect_uri": "https://evil.example/phish"}
     )
-    assert r.status_code == 302 and r.headers["location"] == RETURN
+    assert r.status_code == 302
+    assert r.headers["location"] == RETURN
 
 
 def test_a_token_for_more_than_one_company_fails_loudly(
@@ -107,7 +110,8 @@ def test_a_token_for_more_than_one_company_fails_loudly(
     fake.companies.append({"id": "co_2", "name": "Other"})
     r = web.get("/oauth/callback", params={"code": "c1"})
     assert r.status_code == 502
-    assert fake.installed == [] and installs(schema_url) == []
+    assert fake.installed == []
+    assert installs(schema_url) == []
 
 
 def test_a_missing_code_is_a_bad_request(web: TestClient, fake: FakeRippling) -> None:
@@ -131,13 +135,16 @@ def test_a_malformed_token_response_fails_cleanly_and_stores_nothing(
 ) -> None:
     fake.token_body_override = {"access_token": "tok-x", "token_type": "Bearer"}
     r = web.get("/oauth/callback", params={"code": "c1"})
-    assert r.status_code == 502 and "token response" in r.text
-    assert installs(schema_url) == [] and fake.installed == []
+    assert r.status_code == 502
+    assert "token response" in r.text
+    assert installs(schema_url) == []
+    assert fake.installed == []
 
 
 def test_a_malformed_return_url_falls_back_to_the_default(web: TestClient) -> None:
     r = web.get("/oauth/callback", params={"code": "c1", "redirect_uri": "https://[::1"})
-    assert r.status_code == 302 and r.headers["location"] == RETURN
+    assert r.status_code == 302
+    assert r.headers["location"] == RETURN
 
 
 def test_expired_states_are_purged(schema_url: str, web: TestClient) -> None:

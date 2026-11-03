@@ -4,7 +4,11 @@ Checked November 3, 2026. Each decision names its evidence; inference is labelle
 
 **1. A hand-written HTTP layer instead of an SDK.** Rippling's documentation says to use its "TypeScript, Python, or Go SDK", but no public Python REST SDK could be found: 21 likely package names on PyPI returned 404, and Rippling's public GitHub organisation has no Python or Go REST client. Rippling's only Python packages on PyPI (`rippling-flux-sdk`, `rippling-flux-dev-tools`) define Flux app interfaces, not a REST client. The layer is small (paging, version header, retries, errors), so writing it keeps every documented rule visible and tested. Revisit when a public Python SDK appears.
 
-**2. httpx 0.28 for the client; httpx2 only for tests.** httpx gives one sync API with an in-process `MockTransport`, so the fake Rippling runs without a network. Starlette 1.x deprecates plain httpx in its test client in favour of httpx2, so httpx2 is a test dependency only.
+**2. httpx2 for HTTP.** httpx gives one sync API with an in-process `MockTransport`, so the fake Rippling runs without a network. httpx itself sees "limited activity", and Pydantic maintains httpx2 as its continuation with timely security updates; its only breaking change is the import name (httpx2 changelog). Starlette 1.x also deprecates plain httpx in its test client in favour of httpx2.
+
+**2a. uv for environments and the lockfile.** `uv.lock` is committed and CI installs with `uv sync --locked`, so every run uses the same versions (uv documentation, GitHub Actions guide). Development tools live in a PEP 735 `[dependency-groups]` table, so they are not published as an install option of the package.
+
+**2b. A connection pool for the web app.** The install endpoints borrow connections from a psycopg pool opened at startup and closed at shutdown, as psycopg's documentation recommends for web applications; the pool is created closed and opened explicitly, because the default of its `open` argument may change.
 
 **3. Retry only what Rippling documents.** 429, 500, and 504 retry; 400, 401, 403, 404, 409, 422, 502, and 503 do not, because the troubleshooting page does not list them as retryable (409 is "maybe" there; this sample treats it as a caller decision). `Retry-After` is honoured as seconds or an HTTP date and capped; without it, full-jitter exponential backoff. Every call has an attempt budget and a deadline, so a retry never sleeps past the caller's patience. Whether Rippling always sends `Retry-After` on a 429 is not documented (inference: honour it when present).
 

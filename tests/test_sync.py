@@ -11,8 +11,8 @@ from fake_rippling import FakeRippling
 from rippling_partner.client import RetryPolicy, RipplingAPIError, RipplingClient
 from rippling_partner.sync import (
     LOCK_PREFIX,
-    EmptyListingRefused,
-    SyncAlreadyRunning,
+    EmptyListingError,
+    SyncAlreadyRunningError,
     sync_workers,
 )
 
@@ -80,10 +80,12 @@ def test_a_worker_missing_from_a_complete_listing_is_marked_removed_then_restore
     sync_workers(conn, client(fake), "co_1")
     gone = fake.workers.pop(2)
     r = sync_workers(conn, client(fake), "co_1")
-    assert r.removed == 1 and stored(conn)["w2"] == ("ACTIVE", True)
+    assert r.removed == 1
+    assert stored(conn)["w2"] == ("ACTIVE", True)
     fake.workers.append(gone)
     r = sync_workers(conn, client(fake), "co_1")
-    assert (r.updated, r.removed) == (1, 0) and stored(conn)["w2"] == ("ACTIVE", False)
+    assert (r.updated, r.removed) == (1, 0)
+    assert stored(conn)["w2"] == ("ACTIVE", False)
 
 
 def test_a_listing_that_fails_partway_removes_nobody(conn: psycopg.Connection[Any]) -> None:
@@ -113,7 +115,7 @@ def test_an_empty_complete_listing_is_refused(conn: psycopg.Connection[Any]) -> 
     fake = FakeRippling(workers=people(3))
     sync_workers(conn, client(fake), "co_1")
     fake.workers = []
-    with pytest.raises(EmptyListingRefused):
+    with pytest.raises(EmptyListingError):
         sync_workers(conn, client(fake), "co_1")
     assert all(not removed for _, removed in stored(conn).values())
     outcome = conn.execute("SELECT outcome FROM sync_runs ORDER BY run_id DESC LIMIT 1").fetchone()
@@ -146,7 +148,7 @@ def test_a_second_sync_of_the_same_company_waits_its_turn(
     holder = psycopg.connect(schema_url, autocommit=True)
     try:
         holder.execute("SELECT pg_advisory_lock(hashtext(%s))", (f"{LOCK_PREFIX}co_1",))
-        with pytest.raises(SyncAlreadyRunning):
+        with pytest.raises(SyncAlreadyRunningError):
             sync_workers(conn, client(FakeRippling(workers=people(1))), "co_1")
         assert conn.execute("SELECT count(*) FROM sync_runs").fetchone() == (0,)
     finally:

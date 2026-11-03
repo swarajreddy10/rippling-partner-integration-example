@@ -9,7 +9,7 @@ import sys
 from dataclasses import asdict
 from datetime import UTC, datetime
 
-import httpx
+import httpx2
 import psycopg
 
 from rippling_partner import db
@@ -33,7 +33,7 @@ def main(argv: list[str] | None = None) -> int:
             db.migrate(conn)
             return 0
         store = TokenStore(settings.token_key)
-        with httpx.Client(timeout=30.0) as http:
+        with httpx2.Client(timeout=30.0) as http:
 
             def now() -> datetime:
                 return datetime.now(UTC)

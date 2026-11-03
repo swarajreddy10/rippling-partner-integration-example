@@ -8,7 +8,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
-import httpx
+import httpx2
 import psycopg
 import pytest
 from fake_rippling import FakeRippling
@@ -43,7 +43,7 @@ def test_authorize_url_carries_the_documented_parameters() -> None:
 
 def test_code_exchange_uses_basic_auth_and_the_exact_form_fields() -> None:
     fake = FakeRippling()
-    with httpx.Client(transport=fake.transport()) as http:
+    with httpx2.Client(transport=fake.transport()) as http:
         tokens = exchange_code(http, APP, "code-1", NOW)
     sent = fake.token_requests[0]
     assert sent["auth"] == "Basic " + base64.b64encode(b"cid:secret").decode()
@@ -52,7 +52,8 @@ def test_code_exchange_uses_basic_auth_and_the_exact_form_fields() -> None:
         "code": "code-1",
         "redirect_uri": APP.redirect_uri,
     }
-    assert tokens.access_token == "tok-2" and tokens.refresh_token == "ref-2"
+    assert tokens.access_token == "tok-2"
+    assert tokens.refresh_token == "ref-2"
     assert tokens.expires_at == NOW + timedelta(seconds=129600)
 
 
@@ -60,7 +61,9 @@ def test_code_exchange_uses_basic_auth_and_the_exact_form_fields() -> None:
 def test_tokens_are_encrypted_at_rest(conn: psycopg.Connection[Any], fernet_key: bytes) -> None:
     TokenStore(fernet_key).save(conn, "co_1", TokenSet("acc-1", "ref-1", NOW, "workers.read"))
     row = conn.execute("SELECT access_token_enc, refresh_token_enc FROM oauth_tokens").fetchone()
-    assert row is not None and b"acc-1" not in bytes(row[0]) and b"ref-1" not in bytes(row[1])
+    assert row is not None
+    assert b"acc-1" not in bytes(row[0])
+    assert b"ref-1" not in bytes(row[1])
 
 
 @pytest.mark.db
@@ -69,7 +72,7 @@ def test_a_fresh_access_token_is_returned_without_refreshing(
 ) -> None:
     fake, store = FakeRippling(), TokenStore(fernet_key)
     store.save(conn, "co_1", TokenSet("acc-1", "ref-1", NOW + timedelta(hours=1), "s"))
-    with httpx.Client(transport=fake.transport()) as http:
+    with httpx2.Client(transport=fake.transport()) as http:
         assert store.access_token(conn, "co_1", http, APP, NOW) == "acc-1"
     assert fake.token_requests == []
 
@@ -80,7 +83,7 @@ def test_an_expiring_token_is_refreshed_and_the_new_pair_replaces_the_old(
 ) -> None:
     fake, store = FakeRippling(), TokenStore(fernet_key)
     store.save(conn, "co_1", TokenSet("acc-1", "ref-1", NOW + timedelta(seconds=30), "s"))
-    with httpx.Client(transport=fake.transport()) as http:
+    with httpx2.Client(transport=fake.transport()) as http:
         assert store.access_token(conn, "co_1", http, APP, NOW) == "tok-2"
         assert store.access_token(conn, "co_1", http, APP, NOW) == "tok-2"
     assert len(fake.token_requests) == 1
@@ -96,7 +99,7 @@ def test_concurrent_callers_refresh_once(schema_url: str, fernet_key: bytes) -> 
     got: list[str] = []
 
     def call() -> None:
-        with psycopg.connect(schema_url) as c, httpx.Client(transport=fake.transport()) as http:
+        with psycopg.connect(schema_url) as c, httpx2.Client(transport=fake.transport()) as http:
             got.append(store.access_token(c, "co_1", http, APP, NOW))
 
     threads = [threading.Thread(target=call) for _ in range(4)]
@@ -110,7 +113,7 @@ def test_concurrent_callers_refresh_once(schema_url: str, fernet_key: bytes) -> 
 
 @pytest.mark.db
 def test_unknown_company_fails_loudly(conn: psycopg.Connection[Any], fernet_key: bytes) -> None:
-    with httpx.Client(transport=FakeRippling().transport()) as http, pytest.raises(LookupError):
+    with httpx2.Client(transport=FakeRippling().transport()) as http, pytest.raises(LookupError):
         TokenStore(fernet_key).access_token(conn, "co_missing", http, APP, NOW)
 
 
@@ -123,6 +126,8 @@ def test_cached_token_fetches_once_until_near_expiry() -> None:
         return TokenSet(f"acc-{len(calls)}", "r", now["t"] + timedelta(hours=1), "s")
 
     token = CachedToken(fetch, clock=lambda: now["t"])
-    assert [token(), token(), token()] == ["acc-1"] * 3 and len(calls) == 1
+    assert [token(), token(), token()] == ["acc-1"] * 3
+    assert len(calls) == 1
     now["t"] += timedelta(minutes=56)  # inside the five-minute refresh margin
-    assert token() == "acc-2" and len(calls) == 2
+    assert token() == "acc-2"
+    assert len(calls) == 2

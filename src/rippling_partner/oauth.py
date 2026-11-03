@@ -17,13 +17,13 @@ from datetime import datetime, timedelta
 from typing import Any
 from urllib.parse import urlencode
 
-import httpx
+import httpx2
 import psycopg
 from cryptography.fernet import Fernet
 
 from rippling_partner.client import RipplingAPIError, parse_error
 
-TOKEN_URL = "https://api.rippling.com/api/o/token/"
+TOKEN_URL = "https://api.rippling.com/api/o/token/"  # noqa: S105 - an endpoint, not a secret
 AUTHORIZE_URL = "https://app.rippling.com/apps/PLATFORM/{app_name}/authorize"
 REFRESH_MARGIN = timedelta(minutes=5)
 
@@ -58,7 +58,7 @@ def authorize_url(app: OAuthApp, state: str) -> str:
 
 
 def _token_request(
-    http: httpx.Client, app: OAuthApp, form: dict[str, str], now: datetime
+    http: httpx2.Client, app: OAuthApp, form: dict[str, str], now: datetime
 ) -> TokenSet:
     response = http.post(TOKEN_URL, data=form, auth=(app.client_id, app.client_secret))
     if not response.is_success:
@@ -78,7 +78,7 @@ def _token_request(
     )
 
 
-def exchange_code(http: httpx.Client, app: OAuthApp, code: str, now: datetime) -> TokenSet:
+def exchange_code(http: httpx2.Client, app: OAuthApp, code: str, now: datetime) -> TokenSet:
     return _token_request(
         http,
         app,
@@ -87,7 +87,7 @@ def exchange_code(http: httpx.Client, app: OAuthApp, code: str, now: datetime) -
     )
 
 
-def refresh(http: httpx.Client, app: OAuthApp, refresh_token: str, now: datetime) -> TokenSet:
+def refresh(http: httpx2.Client, app: OAuthApp, refresh_token: str, now: datetime) -> TokenSet:
     return _token_request(
         http, app, {"grant_type": "refresh_token", "refresh_token": refresh_token}, now
     )
@@ -125,7 +125,7 @@ class TokenStore:
         self,
         conn: psycopg.Connection[Any],
         company_id: str,
-        http: httpx.Client,
+        http: httpx2.Client,
         app: OAuthApp,
         now: datetime,
     ) -> str:
@@ -136,7 +136,7 @@ class TokenStore:
         self,
         conn: psycopg.Connection[Any],
         company_id: str,
-        http: httpx.Client,
+        http: httpx2.Client,
         app: OAuthApp,
         now: datetime,
     ) -> TokenSet:
