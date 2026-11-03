@@ -1,0 +1,2 @@
+# Text files stay LF in the repository and in every working tree, on every OS.
+* text=auto eol=lf
