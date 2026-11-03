@@ -42,3 +42,24 @@ def test_the_guard_catches_every_spelling_of_an_unpinned_reference(line: str) ->
     refs = references(line)
     assert refs
     assert not PINNED.match(refs[0])
+
+
+ROOT = Path(__file__).parent.parent
+IMAGE = re.compile(r"^\s*image:\s*(postgres:\S+)", re.MULTILINE)
+
+
+def postgres_images(text: str) -> list[str]:
+    return IMAGE.findall(text)
+
+
+def test_compose_and_ci_test_against_the_same_postgres_image() -> None:
+    compose = postgres_images((ROOT / "compose.yaml").read_text(encoding="utf-8"))
+    ci = postgres_images((ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))
+    assert len(compose) == 1
+    assert compose == ci
+
+
+def test_the_image_check_catches_drift() -> None:
+    assert postgres_images("    image: postgres:18.4@sha256:abc\n") != postgres_images(
+        "        image: postgres:17.10@sha256:def\n"
+    )

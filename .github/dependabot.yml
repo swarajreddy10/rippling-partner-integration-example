@@ -12,12 +12,18 @@ updates:
     groups:
       actions:
         patterns: ["*"]
+  # A major Postgres upgrade is a deliberate change, so only 17.x releases (Postgres's bug and
+  # security fixes) are proposed. The CI service image carries the same pin and must move with
+  # this one: tests/test_workflows.py fails any update that changes only one of them.
   - package-ecosystem: "docker-compose"
     directory: "/"
     schedule:
       interval: "weekly"
     cooldown:
       default-days: 7
+    ignore:
+      - dependency-name: "postgres"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: "uv"
     directory: "/"
     schedule:
